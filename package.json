@@ -1,0 +1,44 @@
+{
+  "name": "cardcheck-pro",
+  "version": "1.0.0",
+  "description": "Plateforme professionnelle de vérification de cartes cadeaux",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "build": "npm install",
+    "test": "echo \"Tests à implémenter\" && exit 0",
+    "postinstall": "echo \"Installation terminée - Configurez vos variables d'environnement\""
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "nodemailer": "^6.9.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "keywords": [
+    "verification",
+    "cartes-cadeaux",
+    "nodejs",
+    "express",
+    "email"
+  ],
+  "author": "Votre Nom",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/votre-username/cardcheck-pro.git"
+  },
+  "bugs": {
+    "url": "https://github.com/votre-username/cardcheck-pro/issues"
+  },
+  "homepage": "https://votre-site.vercel.app"
+}
