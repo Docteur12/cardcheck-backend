@@ -1,3 +1,4 @@
+
 const express = require('express');
 const nodemailer = require('nodemailer');
 const cors = require('cors');
@@ -7,10 +8,18 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Configuration CORS
+// 🔧 CONFIGURATION CORS CORRIGÉE - AUTORISATION EXPLICITE DE CHECKCARDPRO.COM
 app.use(cors({
-  origin: process.env.FRONTEND_URL || ['http://localhost:3000', 'https://votre-site.vercel.app'],
-  credentials: true
+  origin: [
+    'https://checkcardpro.com',
+    'http://localhost:3000', 
+    'https://votre-site.vercel.app',
+    process.env.FRONTEND_URL
+  ].filter(Boolean),
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept'],
+  optionsSuccessStatus: 200
 }));
 
 app.use(express.json({ limit: '10mb' }));
@@ -220,6 +229,7 @@ app.listen(PORT, () => {
   console.log(`🌍 Environnement: ${process.env.NODE_ENV || 'development'}`);
   console.log(`📧 Email configuré: ${process.env.EMAIL_USER ? '✅' : '❌'}`);
   console.log(`🔐 Variables d'env: ${process.env.EMAIL_USER ? 'OK' : 'MANQUANTES'}`);
+  console.log(`🌐 CORS configuré pour: https://checkcardpro.com`);
   console.log('='.repeat(40));
   console.log(`📍 Santé: http://localhost:${PORT}/api/health`);
   console.log(`📊 Stats: http://localhost:${PORT}/api/stats`);
@@ -235,4 +245,4 @@ process.on('SIGTERM', () => {
 process.on('SIGINT', () => {
   console.log('\n🛑 Arrêt du serveur (Ctrl+C)...');
   process.exit(0);
-}); 
+});
